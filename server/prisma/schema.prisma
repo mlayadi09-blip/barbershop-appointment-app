@@ -13,15 +13,44 @@ datasource db {
 }
 
 model User {
-  id        String @id @default(uuid())
-  email     String @unique
-  password  String
-  role      Role @default(USER)
-
-  createdAt DateTime @default(now())
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  role         Role          @default(USER)
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
 }
 
 enum Role {
   USER
   ADMIN
+}
+
+model Service {
+  id           String        @id @default(uuid())
+  name         String        @unique
+  description  String?
+  duration     Int
+  price        Float
+  createdAt    DateTime      @default(now())
+  appointments Appointment[]
+}
+
+model Appointment {
+  id        String            @id @default(uuid())
+  userId    String
+  serviceId String
+  date      DateTime
+  startTime DateTime
+  endTime   DateTime
+  status    AppointmentStatus @default(PENDING)
+  createdAt DateTime          @default(now())
+  user      User              @relation(fields: [userId], references: [id])
+  service   Service           @relation(fields: [serviceId], references: [id])
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
