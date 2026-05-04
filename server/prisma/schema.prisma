@@ -40,7 +40,6 @@ model Appointment {
   id        String            @id @default(uuid())
   userId    String
   serviceId String
-  date      DateTime
   startTime DateTime
   endTime   DateTime
   status    AppointmentStatus @default(PENDING)
