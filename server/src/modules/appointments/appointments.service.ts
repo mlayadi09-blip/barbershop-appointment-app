@@ -102,7 +102,7 @@ export async function updateAppointmentStatus(
   }
 }
 
-export async function getAvailableSlots(serviceId: string, date: Date) {
+export async function getAvailableSlots(date: string, serviceId: string) {
   const service = await prisma.service.findUnique({
     where: { id: serviceId },
   });
@@ -111,44 +111,58 @@ export async function getAvailableSlots(serviceId: string, date: Date) {
     throw new AppError("Service not found", 404);
   }
 
-  const startOfDay = new Date(date);
-  startOfDay.setHours(0, 0, 0, 0);
+  const selectedDate = new Date(date);
 
-  const endOfDay = new Date(date);
-  endOfDay.setHours(23, 59, 59, 999);
+  const startOfDay = new Date(selectedDate);
+  startOfDay.setHours(9, 0, 0, 0);
+
+  const endOfDay = new Date(selectedDate);
+  endOfDay.setHours(18, 0, 0, 0);
 
   const appointments = await prisma.appointment.findMany({
     where: {
-      serviceId,
       startTime: {
         gte: startOfDay,
-        lte: endOfDay,
+        lt: endOfDay,
+      },
+      status: {
+        not: "CANCELLED",
       },
     },
-    orderBy: { startTime: "asc" },
   });
 
-  const slots = [];
-  let currentTime = new Date(startOfDay);
+  const slots: {
+    time: string;
+    available: boolean;
+  }[] = [];
 
-  while (currentTime < endOfDay) {
-    const slotEndTime = new Date(
-      currentTime.getTime() + service.duration * 60000,
-    );
-    const conflict = appointments.find(
-      (appt) =>
-        (appt.startTime < slotEndTime && appt.endTime > currentTime) ||
-        (appt.startTime >= currentTime && appt.startTime < slotEndTime),
-    );
+  const slotDuration = service.duration;
 
-    if (!conflict) {
-      slots.push({
-        startTime: new Date(currentTime),
-        endTime: slotEndTime,
-      });
+  let current = new Date(startOfDay);
+
+  function isOverlapping(start: Date, end: Date) {
+    return appointments.some((appointment) => {
+      return start < appointment.endTime && end > appointment.startTime;
+    });
+  }
+
+  while (current < endOfDay) {
+    const slotStart = new Date(current);
+
+    const slotEnd = new Date(slotStart.getTime() + slotDuration * 60000);
+
+    if (slotEnd > endOfDay) {
+      break;
     }
 
-    currentTime = slotEndTime;
+    const available = !isOverlapping(slotStart, slotEnd);
+
+    slots.push({
+      time: slotStart.toISOString(),
+      available,
+    });
+
+    current = new Date(current.getTime() + 30 * 60000);
   }
 
   return slots;
