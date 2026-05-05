@@ -61,30 +61,45 @@ export async function getAllAppointments() {
 }
 
 export async function getAppointmentById(id: string) {
-  return prisma.appointment.findUnique({
+  const appointment = prisma.appointment.findUnique({
     where: { id },
     include: {
       service: true,
       user: true,
     },
   });
+  if (!appointment) {
+    throw new AppError("Appointment not found", 404);
+  }
+  return appointment;
 }
 
 export async function cancelAppointment(id: string, userId: string) {
-  return prisma.appointment.update({
-    where: { id, userId },
-    data: { status: "CANCELLED" },
-  });
+  try {
+    return prisma.appointment.update({
+      where: { id, userId },
+      data: { status: "CANCELLED" },
+    });
+  } catch (err) {
+    throw new AppError(
+      "Appointment not found or you don't have permission to cancel it",
+      404,
+    );
+  }
 }
 
 export async function updateAppointmentStatus(
   id: string,
   status: "PENDING" | "CONFIRMED" | "CANCELLED",
 ) {
-  return prisma.appointment.update({
-    where: { id },
-    data: { status },
-  });
+  try {
+    return prisma.appointment.update({
+      where: { id },
+      data: { status },
+    });
+  } catch (err) {
+    throw new AppError("Appointment not found", 404);
+  }
 }
 
 export async function getAvailableSlots(serviceId: string, date: Date) {
