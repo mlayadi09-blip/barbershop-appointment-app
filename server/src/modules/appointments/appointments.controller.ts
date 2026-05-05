@@ -18,3 +18,15 @@ export async function create(req: Request, res: Response) {
     data: appointment,
   });
 }
+
+export async function getMyAppointments(req: Request, res: Response) {}
+
+export async function getAllAppointments(req: Request, res: Response) {}
+
+export async function getById(req: Request, res: Response) {}
+
+export async function cancel(req: Request, res: Response) {}
+
+export async function updateStatus(req: Request, res: Response) {}
+
+export async function getAvailability(req: Request, res: Response) {}

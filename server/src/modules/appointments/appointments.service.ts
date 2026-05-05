@@ -41,3 +41,100 @@ export async function createAppointment(data: {
     },
   });
 }
+
+export async function getMyAppointments(userId: string) {
+  return prisma.appointment.findMany({
+    where: { userId },
+    include: {
+      service: true,
+    },
+  });
+}
+
+export async function getAllAppointments() {
+  return prisma.appointment.findMany({
+    include: {
+      service: true,
+      user: true,
+    },
+  });
+}
+
+export async function getAppointmentById(id: string) {
+  return prisma.appointment.findUnique({
+    where: { id },
+    include: {
+      service: true,
+      user: true,
+    },
+  });
+}
+
+export async function cancelAppointment(id: string, userId: string) {
+  return prisma.appointment.update({
+    where: { id, userId },
+    data: { status: "CANCELLED" },
+  });
+}
+
+export async function updateAppointmentStatus(
+  id: string,
+  status: "PENDING" | "CONFIRMED" | "CANCELLED",
+) {
+  return prisma.appointment.update({
+    where: { id },
+    data: { status },
+  });
+}
+
+export async function getAvailableSlots(serviceId: string, date: Date) {
+  const service = await prisma.service.findUnique({
+    where: { id: serviceId },
+  });
+
+  if (!service) {
+    throw new AppError("Service not found", 404);
+  }
+
+  const startOfDay = new Date(date);
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date(date);
+  endOfDay.setHours(23, 59, 59, 999);
+
+  const appointments = await prisma.appointment.findMany({
+    where: {
+      serviceId,
+      startTime: {
+        gte: startOfDay,
+        lte: endOfDay,
+      },
+    },
+    orderBy: { startTime: "asc" },
+  });
+
+  const slots = [];
+  let currentTime = new Date(startOfDay);
+
+  while (currentTime < endOfDay) {
+    const slotEndTime = new Date(
+      currentTime.getTime() + service.duration * 60000,
+    );
+    const conflict = appointments.find(
+      (appt) =>
+        (appt.startTime < slotEndTime && appt.endTime > currentTime) ||
+        (appt.startTime >= currentTime && appt.startTime < slotEndTime),
+    );
+
+    if (!conflict) {
+      slots.push({
+        startTime: new Date(currentTime),
+        endTime: slotEndTime,
+      });
+    }
+
+    currentTime = slotEndTime;
+  }
+
+  return slots;
+}
