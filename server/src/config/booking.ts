@@ -1,0 +1,5 @@
+export const BOOKING_CONFIG = {
+  WORK_START_HOUR: 9,
+  WORK_END_HOUR: 18,
+  SLOT_INTERVAL: 30,
+};

@@ -1,11 +1,15 @@
 import { prisma } from "../../config/prisma";
 import { AppError } from "../../errors/AppError";
+import { BOOKING_CONFIG } from "../../config/booking";
 
 export async function createAppointment(data: {
   userId: string;
   serviceId: string;
   startTime: Date;
 }) {
+  if (data.startTime < new Date()) {
+    throw new AppError("Appointment must be in the future", 400);
+  }
   const service = await prisma.service.findUnique({
     where: { id: data.serviceId },
   });
@@ -48,6 +52,7 @@ export async function getMyAppointments(userId: string) {
     include: {
       service: true,
     },
+    orderBy: { startTime: "asc" },
   });
 }
 
@@ -61,7 +66,7 @@ export async function getAllAppointments() {
 }
 
 export async function getAppointmentById(id: string) {
-  const appointment = prisma.appointment.findUnique({
+  const appointment = await prisma.appointment.findUnique({
     where: { id },
     include: {
       service: true,
@@ -75,31 +80,49 @@ export async function getAppointmentById(id: string) {
 }
 
 export async function cancelAppointment(id: string, userId: string) {
-  try {
-    return prisma.appointment.update({
-      where: { id, userId },
-      data: { status: "CANCELLED" },
-    });
-  } catch (err) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id },
+  });
+
+  if (!appointment) {
+    throw new AppError("Appointment not found", 404);
+  }
+
+  if (appointment.userId !== userId) {
     throw new AppError(
-      "Appointment not found or you don't have permission to cancel it",
-      404,
+      "You don't have permission to cancel this appointment",
+      403,
     );
   }
+
+  if (appointment.status === "CANCELLED") {
+    throw new AppError("Appointment already cancelled", 400);
+  }
+
+  return prisma.appointment.update({
+    where: { id },
+    data: {
+      status: "CANCELLED",
+    },
+  });
 }
 
 export async function updateAppointmentStatus(
   id: string,
   status: "PENDING" | "CONFIRMED" | "CANCELLED",
 ) {
-  try {
-    return prisma.appointment.update({
-      where: { id },
-      data: { status },
-    });
-  } catch (err) {
+  const appointment = await prisma.appointment.findUnique({
+    where: { id },
+  });
+
+  if (!appointment) {
     throw new AppError("Appointment not found", 404);
   }
+
+  return prisma.appointment.update({
+    where: { id },
+    data: { status },
+  });
 }
 
 export async function getAvailableSlots(date: string, serviceId: string) {
@@ -113,12 +136,18 @@ export async function getAvailableSlots(date: string, serviceId: string) {
 
   const selectedDate = new Date(date);
 
+  if (isNaN(selectedDate.getTime())) {
+    throw new AppError("Invalid date", 400);
+  }
+
+  // Working hours: 09:00 → 18:00
   const startOfDay = new Date(selectedDate);
-  startOfDay.setHours(9, 0, 0, 0);
+  startOfDay.setHours(BOOKING_CONFIG.WORK_START_HOUR, 0, 0, 0);
 
   const endOfDay = new Date(selectedDate);
-  endOfDay.setHours(18, 0, 0, 0);
+  endOfDay.setHours(BOOKING_CONFIG.WORK_END_HOUR, 0, 0, 0);
 
+  // Get all non-cancelled appointments for that day
   const appointments = await prisma.appointment.findMany({
     where: {
       startTime: {
@@ -129,6 +158,9 @@ export async function getAvailableSlots(date: string, serviceId: string) {
         not: "CANCELLED",
       },
     },
+    orderBy: {
+      startTime: "asc",
+    },
   });
 
   const slots: {
@@ -138,7 +170,12 @@ export async function getAvailableSlots(date: string, serviceId: string) {
 
   const slotDuration = service.duration;
 
+  // Generate slots every 30 minutes
+  const SLOT_INTERVAL = BOOKING_CONFIG.SLOT_INTERVAL;
+
   let current = new Date(startOfDay);
+
+  const now = new Date();
 
   function isOverlapping(start: Date, end: Date) {
     return appointments.some((appointment) => {
@@ -149,10 +186,18 @@ export async function getAvailableSlots(date: string, serviceId: string) {
   while (current < endOfDay) {
     const slotStart = new Date(current);
 
-    const slotEnd = new Date(slotStart.getTime() + slotDuration * 60000);
+    const slotEnd = new Date(slotStart.getTime() + slotDuration * 60 * 1000);
 
+    // Prevent slots outside working hours
     if (slotEnd > endOfDay) {
       break;
+    }
+
+    // Prevent past slots
+    if (slotStart < now) {
+      current = new Date(current.getTime() + SLOT_INTERVAL * 60 * 1000);
+
+      continue;
     }
 
     const available = !isOverlapping(slotStart, slotEnd);
@@ -162,7 +207,7 @@ export async function getAvailableSlots(date: string, serviceId: string) {
       available,
     });
 
-    current = new Date(current.getTime() + 30 * 60000);
+    current = new Date(current.getTime() + SLOT_INTERVAL * 60 * 1000);
   }
 
   return slots;
